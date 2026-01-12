@@ -18,8 +18,8 @@
     .tab.active { background: #4b6cb7; color: #fff; }
 
     label { font-weight: 600; margin-bottom: 6px; display: block; }
-    input[type="text"], textarea { width: 100%; padding: 12px 15px; border-radius: 8px; border: 1px solid #ccc; font-size: 1rem; transition: 0.2s; }
-    input[type="text"]:focus, textarea:focus { border-color: #4b6cb7; outline: none; box-shadow: 0 0 0 3px rgba(75,108,183,0.15); }
+    input[type="text"], input[type="password"], textarea { width: 100%; padding: 12px 15px; border-radius: 8px; border: 1px solid #ccc; font-size: 1rem; transition: 0.2s; }
+    input[type="text"]:focus, input[type="password"]:focus, textarea:focus { border-color: #4b6cb7; outline: none; box-shadow: 0 0 0 3px rgba(75,108,183,0.15); }
 
     button { background: #4b6cb7; color: #fff; font-weight: 600; padding: 10px 16px; border: none; border-radius: 8px; cursor: pointer; font-size: 0.95rem; transition: 0.3s; }
     button:hover { background: #182848; }
@@ -102,23 +102,23 @@
       document.getElementById('output').textContent = '';
     }
 
-    function encodeText() {
+    async function encodeText() {
       const carrier = document.getElementById('carrier-encode').value;
       const hidden = document.getElementById('hidden-encode').value;
       const key = document.getElementById('key-encode').value;
       try {
-        const encoded = encode(carrier, hidden, key);
+        const encoded = await encode(carrier, hidden, key);
         document.getElementById('output').textContent = encoded;
       } catch(err) {
         document.getElementById('output').textContent = "Error: " + err.message;
       }
     }
 
-    function decodeText() {
+    async function decodeText() {
       const carrier = document.getElementById('carrier-decode').value;
       const key = document.getElementById('key-decode').value;
       try {
-        const decoded = decode(carrier, key);
+        const decoded = await decode(carrier, key);
         document.getElementById('output').textContent = decoded;
       } catch(err) {
         document.getElementById('output').textContent = "Error: " + err.message;
