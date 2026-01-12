@@ -15,15 +15,16 @@ const BASE = INVISIBLE.length;
 // -----------------------------
 // ESC MARKERS
 // -----------------------------
-const ESC_2 = INVISIBLE[0].repeat(3);
-const ESC_3 = INVISIBLE[5].repeat(3);
-const ESC_4 = INVISIBLE[2].repeat(3);
+// Use 4-character sequences that won't collide with data encodings
+const ESC_2 = INVISIBLE[5] + INVISIBLE[5] + INVISIBLE[5] + INVISIBLE[0];
+const ESC_3 = INVISIBLE[5] + INVISIBLE[5] + INVISIBLE[5] + INVISIBLE[1];
+const ESC_4 = INVISIBLE[5] + INVISIBLE[5] + INVISIBLE[5] + INVISIBLE[2];
 
 // -----------------------------
 // CHARACTER SETS
 // -----------------------------
 const SET_2 = " abcdefghijklmnopqrstuvwxyz012345678";
-const SET_3 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ.,!?@#$%^&*()-_=+[]{}<>/|~";
+const SET_3 = "9ABCDEFGHIJKLMNOPQRSTUVWXYZ.,!?@#$%^&*()-_=+[]{}<>/|~";
 
 // -----------------------------
 // MAP BUILDERS
@@ -123,26 +124,67 @@ function decode(stego) {
   let byte_buf = [];
 
   while (i < invis.length) {
-    const tri = invis.slice(i, i + 3).join("");
+    // ALWAYS check for escape sequences first (need at least 4 characters)
+    if (i + 4 <= invis.length) {
+      const quad = invis.slice(i, i + 4).join("");
 
-    if (tri === ESC_2) { mode = 2; i += 3; continue; }
-    if (tri === ESC_3) { mode = 3; i += 3; continue; }
-    if (tri === ESC_4) { mode = 4; i += 3; continue; }
+      if (quad === ESC_2) {
+        // Flush byte buffer if coming from mode 4
+        if (byte_buf.length) {
+          out.push(new TextDecoder().decode(new Uint8Array(byte_buf)));
+          byte_buf = [];
+        }
+        mode = 2;
+        i += 4;
+        continue;
+      } else if (quad === ESC_3) {
+        // Flush byte buffer if coming from mode 4
+        if (byte_buf.length) {
+          out.push(new TextDecoder().decode(new Uint8Array(byte_buf)));
+          byte_buf = [];
+        }
+        mode = 3;
+        i += 4;
+        continue;
+      } else if (quad === ESC_4) {
+        // Flush byte buffer if coming from mode 4
+        if (byte_buf.length) {
+          out.push(new TextDecoder().decode(new Uint8Array(byte_buf)));
+          byte_buf = [];
+        }
+        mode = 4;
+        i += 4;
+        continue;
+      }
+    }
 
+    // Not an escape sequence, decode based on current mode
     if (mode === 2) {
-      const pair = invis[i] + invis[i + 1];
-      out.push(DEC_2[pair]);
-      i += 2;
+      if (i + 2 <= invis.length) {
+        const pair = invis[i] + invis[i + 1];
+        out.push(DEC_2[pair]);
+        i += 2;
+      } else {
+        break;
+      }
     }
     else if (mode === 3) {
-      const triple = invis[i] + invis[i + 1] + invis[i + 2];
-      out.push(DEC_3[triple]);
-      i += 3;
+      if (i + 3 <= invis.length) {
+        const triple = invis[i] + invis[i + 1] + invis[i + 2];
+        out.push(DEC_3[triple]);
+        i += 3;
+      } else {
+        break;
+      }
     }
     else if (mode === 4) {
-      const quad = invis[i] + invis[i + 1] + invis[i + 2] + invis[i + 3];
-      byte_buf.push(DEC_4[quad]);
-      i += 4;
+      if (i + 4 <= invis.length) {
+        const quad = invis[i] + invis[i + 1] + invis[i + 2] + invis[i + 3];
+        byte_buf.push(DEC_4[quad]);
+        i += 4;
+      } else {
+        break;
+      }
     }
     else break;
   }
