@@ -22,15 +22,16 @@ MAX_PER_GAP = 15
 # -----------------------------
 # ESC MARKERS
 # -----------------------------
-ESC_2 = INVISIBLE[0] * 3
-ESC_3 = INVISIBLE[5] * 3
-ESC_4 = INVISIBLE[2] * 3
+# Use 4-character sequences that won't collide with data encodings
+ESC_2 = INVISIBLE[5] + INVISIBLE[5] + INVISIBLE[5] + INVISIBLE[0]
+ESC_3 = INVISIBLE[5] + INVISIBLE[5] + INVISIBLE[5] + INVISIBLE[1]
+ESC_4 = INVISIBLE[5] + INVISIBLE[5] + INVISIBLE[5] + INVISIBLE[2]
 
 # -----------------------------
 # CHARACTER SETS
 # -----------------------------
 SET_2 = " abcdefghijklmnopqrstuvwxyz012345678"
-SET_3 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ.,!?@#$%^&*()-_=+[]{}<>/|~"
+SET_3 = "9ABCDEFGHIJKLMNOPQRSTUVWXYZ.,!?@#$%^&*()-_=+[]{}<>/|~"
 
 # -----------------------------
 # MAP BUILDERS
@@ -117,35 +118,59 @@ def decode(stego: str) -> str:
     byte_buf = []
 
     while i < len(invis):
-        tri = "".join(invis[i:i+3])
+        # ALWAYS check for escape sequences first (need at least 4 characters)
+        if i + 4 <= len(invis):
+            quad = "".join(invis[i:i+4])
 
-        if tri == ESC_2:
-            mode = 2
-            i += 3
-            continue
-        if tri == ESC_3:
-            mode = 3
-            i += 3
-            continue
-        if tri == ESC_4:
-            mode = 4
-            i += 3
-            continue
+            if quad == ESC_2:
+                # Flush byte buffer if coming from mode 4
+                if byte_buf:
+                    out.append(bytes(byte_buf).decode("utf-8"))
+                    byte_buf = []
+                mode = 2
+                i += 4
+                continue
+            elif quad == ESC_3:
+                # Flush byte buffer if coming from mode 4
+                if byte_buf:
+                    out.append(bytes(byte_buf).decode("utf-8"))
+                    byte_buf = []
+                mode = 3
+                i += 4
+                continue
+            elif quad == ESC_4:
+                # Flush byte buffer if coming from mode 4
+                if byte_buf:
+                    out.append(bytes(byte_buf).decode("utf-8"))
+                    byte_buf = []
+                mode = 4
+                i += 4
+                continue
 
+        # Not an escape sequence, decode based on current mode
         if mode == 2:
-            pair = invis[i] + invis[i+1]
-            out.append(DEC_2[pair])
-            i += 2
+            if i + 2 <= len(invis):
+                pair = invis[i] + invis[i+1]
+                out.append(DEC_2[pair])
+                i += 2
+            else:
+                break
 
         elif mode == 3:
-            tri = invis[i] + invis[i+1] + invis[i+2]
-            out.append(DEC_3[tri])
-            i += 3
+            if i + 3 <= len(invis):
+                tri = invis[i] + invis[i+1] + invis[i+2]
+                out.append(DEC_3[tri])
+                i += 3
+            else:
+                break
 
         elif mode == 4:
-            quad = invis[i] + invis[i+1] + invis[i+2] + invis[i+3]
-            byte_buf.append(DEC_4[quad])
-            i += 4
+            if i + 4 <= len(invis):
+                quad = invis[i] + invis[i+1] + invis[i+2] + invis[i+3]
+                byte_buf.append(DEC_4[quad])
+                i += 4
+            else:
+                break
 
         else:
             break

@@ -1,8 +1,8 @@
-ESC_OVERHEAD = 3
+ESC_OVERHEAD = 4
 MAX_PER_GAP = 15
 
-SET_2 = set("abcdefghijklmnopqrstuvwxyz012345678")
-SET_3 = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ.,!?@#$%^&*()-_=+[]{}<>/|~")
+SET_2 = set(" abcdefghijklmnopqrstuvwxyz012345678")
+SET_3 = set("9ABCDEFGHIJKLMNOPQRSTUVWXYZ.,!?@#$%^&*()-_=+[]{}<>/|~")
 
 def classify_char(ch):
     if ch in SET_2:
