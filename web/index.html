@@ -56,6 +56,11 @@
         <textarea id="hidden-encode" rows="3" placeholder="Enter secret text"></textarea>
       </div>
 
+      <div>
+        <label for="key-encode">Encryption Key (Optional)</label>
+        <input type="password" id="key-encode" placeholder="Enter encryption key (optional)">
+      </div>
+
       <button onclick="encodeText()">Encode</button>
     </div>
 
@@ -64,6 +69,11 @@
       <div>
         <label for="carrier-decode">Encoded Text</label>
         <textarea id="carrier-decode" rows="3" placeholder="Paste encoded text"></textarea>
+      </div>
+
+      <div>
+        <label for="key-decode">Encryption Key (Optional)</label>
+        <input type="password" id="key-decode" placeholder="Enter encryption key (optional)">
       </div>
 
       <button onclick="decodeText()">Decode</button>
@@ -95,8 +105,9 @@
     function encodeText() {
       const carrier = document.getElementById('carrier-encode').value;
       const hidden = document.getElementById('hidden-encode').value;
+      const key = document.getElementById('key-encode').value;
       try {
-        const encoded = encode(carrier, hidden);
+        const encoded = encode(carrier, hidden, key);
         document.getElementById('output').textContent = encoded;
       } catch(err) {
         document.getElementById('output').textContent = "Error: " + err.message;
@@ -105,8 +116,9 @@
 
     function decodeText() {
       const carrier = document.getElementById('carrier-decode').value;
+      const key = document.getElementById('key-decode').value;
       try {
-        const decoded = decode(carrier);
+        const decoded = decode(carrier, key);
         document.getElementById('output').textContent = decoded;
       } catch(err) {
         document.getElementById('output').textContent = "Error: " + err.message;
