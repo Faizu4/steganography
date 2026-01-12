@@ -1,6 +1,8 @@
 
 import sys
 import unicodedata
+import hashlib
+import hmac
 
 arg = sys.argv
 
@@ -67,13 +69,174 @@ for val in range(256):
     DEC_4[quad] = val
 
 # -----------------------------
+# TEXT TO SET_2 CONVERSION (for space optimization)
+# -----------------------------
+def text_to_set2(text: str) -> str:
+    """
+    Convert any text to SET_2-only representation for maximum space efficiency.
+    Uses base-37 encoding of UTF-8 bytes.
+    """
+    if not text:
+        return ""
+    
+    # Convert text to bytes
+    text_bytes = text.encode('utf-8')
+    
+    # Convert bytes to a large integer
+    num = int.from_bytes(text_bytes, 'big')
+    
+    # Convert to base-37 using SET_2 alphabet
+    base = len(SET_2)
+    if num == 0:
+        return SET_2[0]
+    
+    result = []
+    while num > 0:
+        result.append(SET_2[num % base])
+        num //= base
+    
+    # Reverse and add length prefix (also in base-37)
+    encoded = ''.join(reversed(result))
+    
+    # Add length marker (original byte length in base-37)
+    length_encoded = []
+    length = len(text_bytes)
+    if length == 0:
+        length_encoded.append(SET_2[0])
+    else:
+        while length > 0:
+            length_encoded.append(SET_2[length % base])
+            length //= base
+    
+    # Format: <length>:<encoded_data>
+    return ''.join(reversed(length_encoded)) + ':' + encoded
+
+def set2_to_text(encoded: str) -> str:
+    """
+    Convert SET_2-only representation back to original text.
+    """
+    if not encoded:
+        return ""
+    
+    # Split length and data
+    if ':' not in encoded:
+        return ""
+    
+    length_str, data_str = encoded.split(':', 1)
+    
+    # Decode length
+    base = len(SET_2)
+    length = 0
+    for ch in length_str:
+        length = length * base + SET_2.index(ch)
+    
+    # Decode data back to number
+    num = 0
+    for ch in data_str:
+        num = num * base + SET_2.index(ch)
+    
+    # Convert number back to bytes
+    if num == 0:
+        text_bytes = b'\x00' * length
+    else:
+        text_bytes = num.to_bytes((num.bit_length() + 7) // 8, 'big')
+    
+    # Pad with zeros if needed
+    if len(text_bytes) < length:
+        text_bytes = b'\x00' * (length - len(text_bytes)) + text_bytes
+    
+    # Convert bytes back to text
+    return text_bytes.decode('utf-8')
+
+# -----------------------------
+# FF1-LIKE FORMAT-PRESERVING ENCRYPTION
+# -----------------------------
+def ff1_encrypt_char(ch: str, key: str, index: int) -> str:
+    """
+    Simple format-preserving encryption for a single character.
+    Uses HMAC-based key derivation and character set mapping.
+    """
+    if not key:
+        return ch
+    
+    # Determine which character set this belongs to
+    if ch in SET_2:
+        charset = SET_2
+        char_index = SET_2.index(ch)
+    elif ch in SET_3:
+        charset = SET_3
+        char_index = SET_3.index(ch)
+    else:
+        # For byte mode (UTF-8), encrypt each byte
+        return ch
+    
+    charset_size = len(charset)
+    
+    # Create a unique key for this position (position-based, not character-based)
+    position_key = f"{key}:{index}".encode('utf-8')
+    
+    # Use HMAC to generate a pseudo-random shift (only based on position)
+    h = hmac.new(position_key, b'', hashlib.sha256)
+    shift = int.from_bytes(h.digest()[:4], 'big') % charset_size
+    
+    # Apply the shift (Caesar-like cipher within the character set)
+    new_index = (char_index + shift) % charset_size
+    return charset[new_index]
+
+def ff1_decrypt_char(ch: str, key: str, index: int) -> str:
+    """
+    Decrypt a single character (reverse of ff1_encrypt_char).
+    """
+    if not key:
+        return ch
+    
+    # Determine which character set this belongs to
+    if ch in SET_2:
+        charset = SET_2
+        char_index = SET_2.index(ch)
+    elif ch in SET_3:
+        charset = SET_3
+        char_index = SET_3.index(ch)
+    else:
+        # For byte mode (UTF-8), no decryption needed here
+        return ch
+    
+    charset_size = len(charset)
+    
+    # Create the same unique key for this position
+    position_key = f"{key}:{index}".encode('utf-8')
+    
+    # Calculate the same shift as in encryption
+    h = hmac.new(position_key, b'', hashlib.sha256)
+    shift = int.from_bytes(h.digest()[:4], 'big') % charset_size
+    
+    # Reverse the shift
+    orig_index = (char_index - shift) % charset_size
+    return charset[orig_index]
+
+def ff1_encrypt(text: str, key: str) -> str:
+    """Encrypt text using format-preserving encryption."""
+    if not key:
+        return text
+    return ''.join(ff1_encrypt_char(ch, key, i) for i, ch in enumerate(text))
+
+def ff1_decrypt(text: str, key: str) -> str:
+    """Decrypt text using format-preserving encryption."""
+    if not key:
+        return text
+    return ''.join(ff1_decrypt_char(ch, key, i) for i, ch in enumerate(text))
+
+# -----------------------------
 # ENCODE (HYBRID)
 # -----------------------------
-def encode(carrier: str, secret: str) -> str:
+def encode(carrier: str, secret: str, key: str = "") -> str:
+    # Apply FF1 encryption if key is provided
+    encrypted_secret = ff1_encrypt(secret, key) if key else secret
+    
     invis = []
     mode = None
 
-    for ch in secret:
+    for ch in encrypted_secret:
         if ch in ENC_2:
             if mode != 2:
                 invis.append(ESC_2)
@@ -110,7 +273,7 @@ def encode(carrier: str, secret: str) -> str:
 # -----------------------------
 # DECODE (HYBRID)
 # -----------------------------
-def decode(stego: str) -> str:
+def decode(stego: str, key: str = "") -> str:
     invis = [c for c in stego if c in INVISIBLE]
     out = []
     i = 0
@@ -178,7 +341,9 @@ def decode(stego: str) -> str:
     if byte_buf:
         out.append(bytes(byte_buf).decode("utf-8"))
 
-    return "".join(out)
+    decrypted_text = "".join(out)
+    # Apply FF1 decryption if key is provided
+    return ff1_decrypt(decrypted_text, key) if key else decrypted_text
 
 # -----------------------------
 # CLI
@@ -187,8 +352,9 @@ if __name__ == "__main__":
     if "--encode" in sys.argv:
         real = input("Real text: ")
         hidden = input("Hidden text: ")
+        key = input("Encryption key (optional, press Enter to skip): ").strip()
 
-        out = encode(real, hidden)
+        out = encode(real, hidden, key)
 
         print("\nHuman view:")
         print(out)
@@ -196,7 +362,9 @@ if __name__ == "__main__":
         print("\nUnicode (computer) view:")
         print(out.encode("unicode_escape").decode())
     elif "--decode" in sys.argv:
-        print(decode(input("Paste encoded text: ")))
+        stego_text = input("Paste encoded text: ")
+        key = input("Encryption key (optional, press Enter to skip): ").strip()
+        print(decode(stego_text, key))
     else:
         print("Usage: ")
         print("--encode")

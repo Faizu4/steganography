@@ -70,13 +70,110 @@ for (let val = 0; val < 256; val++) {
 }
 
 // -----------------------------
+// FF1-LIKE FORMAT-PRESERVING ENCRYPTION
+// -----------------------------
+async function hmacSHA256(key, message) {
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(key);
+  const messageData = encoder.encode(message);
+  
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+  return new Uint8Array(signature);
+}
+
+function ff1_encrypt_char(ch, key, index) {
+  if (!key) return ch;
+  
+  // Determine which character set this belongs to
+  let charset, char_index;
+  if (SET_2.includes(ch)) {
+    charset = SET_2;
+    char_index = SET_2.indexOf(ch);
+  } else if (SET_3.includes(ch)) {
+    charset = SET_3;
+    char_index = SET_3.indexOf(ch);
+  } else {
+    // For byte mode (UTF-8), no encryption here
+    return ch;
+  }
+  
+  const charset_size = charset.length;
+  const position_key = `${key}:${index}`;
+  
+  // Create a deterministic pseudo-random shift using simple hash (position-based only)
+  let hash = 0;
+  for (let i = 0; i < position_key.length; i++) {
+    hash = ((hash << 5) - hash) + position_key.charCodeAt(i);
+    hash = hash & hash;
+  }
+  
+  const shift = Math.abs(hash) % charset_size;
+  const new_index = (char_index + shift) % charset_size;
+  return charset[new_index];
+}
+
+function ff1_decrypt_char(ch, key, index) {
+  if (!key) return ch;
+  
+  // Determine which character set this belongs to
+  let charset, char_index;
+  if (SET_2.includes(ch)) {
+    charset = SET_2;
+    char_index = SET_2.indexOf(ch);
+  } else if (SET_3.includes(ch)) {
+    charset = SET_3;
+    char_index = SET_3.indexOf(ch);
+  } else {
+    // For byte mode (UTF-8), no decryption needed
+    return ch;
+  }
+  
+  const charset_size = charset.length;
+  const position_key = `${key}:${index}`;
+  
+  // Calculate the same shift as in encryption
+  let hash = 0;
+  for (let i = 0; i < position_key.length; i++) {
+    hash = ((hash << 5) - hash) + position_key.charCodeAt(i);
+    hash = hash & hash;
+  }
+  
+  const shift = Math.abs(hash) % charset_size;
+  
+  // Reverse the shift
+  const orig_index = (char_index - shift + charset_size) % charset_size;
+  return charset[orig_index];
+}
+
+function ff1_encrypt(text, key) {
+  if (!key) return text;
+  return Array.from(text).map((ch, i) => ff1_encrypt_char(ch, key, i)).join('');
+}
+
+function ff1_decrypt(text, key) {
+  if (!key) return text;
+  return Array.from(text).map((ch, i) => ff1_decrypt_char(ch, key, i)).join('');
+}
+
+// -----------------------------
 // ENCODE (HYBRID)
 // -----------------------------
-function encode(carrier, secret) {
+function encode(carrier, secret, key = "") {
+  // Apply FF1 encryption if key is provided
+  const encrypted_secret = key ? ff1_encrypt(secret, key) : secret;
+  
   let invis = [];
   let mode = null;
 
-  for (let ch of secret) {
+  for (let ch of encrypted_secret) {
     if (ch in ENC_2) {
       if (mode !== 2) { invis.push(ESC_2); mode = 2; }
       invis.push(ENC_2[ch]);
@@ -116,7 +213,7 @@ function encode(carrier, secret) {
 // -----------------------------
 // DECODE (HYBRID)
 // -----------------------------
-function decode(stego) {
+function decode(stego, key = "") {
   const invis = Array.from(stego).filter(c => INVISIBLE.includes(c));
   let out = [];
   let i = 0;
@@ -193,7 +290,9 @@ function decode(stego) {
     out.push(new TextDecoder().decode(new Uint8Array(byte_buf)));
   }
 
-  return out.join("");
+  const decrypted_text = out.join("");
+  // Apply FF1 decryption if key is provided
+  return key ? ff1_decrypt(decrypted_text, key) : decrypted_text;
 }
 
 // -----------------------------
